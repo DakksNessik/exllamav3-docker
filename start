@@ -1,0 +1,98 @@
+#!/bin/bash
+# Create Variables
+PYTORCH_ALLOC_CONF=expandable_segments:True
+HF_MODEL=""
+BITS="${BITS:-6}"
+HEAD_BITS="${HEAD_BITS:-6}"
+SHARD_SIZE="${SHARD_SIZE:-8192}"
+HF_WORKERS="${HF_WORKERS:-8}"
+EXL3_PM="${EXL3_PM:-false}"
+EXL3_DL="${EXL3_DL:-0}"
+exl3_args=""
+command=""
+HF_USERNAME="${HF_USERNAME:-anonymous}"
+HF_TOKEN=$HF_TOKEN
+HF_MODEL=$HF_MODEL
+HF_TMP=$INPUT/.hf
+HF_WORKERS="${HF_WORKERS:-8}"
+command=""
+# Function to display script usage
+function usage {
+  local row_format="%-30s\t%-90s\n"
+  local row_format_ext="%-30s\t\t\t\t%-90s\n"
+  printf "Usage: %s [OPTIONS]\nOptions:\n" $0
+  printf "$row_format" "-m Author/Model-Name, --model Author/Model-Name" "Valid Base Model stub from Huggingface.com to Download and Convert. (Example: Author/Model-Name)"
+  printf "$row_format_ext" "-s int, --shard-size int" "Output shard size, in megabytes. Default is 8192. Set this to 0 to disable sharding.\nNote that writing very large .safetensors files can require a lot of system RAM."
+  printf "$row_format_ext" "-b float, --bpw float" "Target average number of bits per weight (bpw) for model conversion (Examples: \"3.75\",\"4\",\"4.5\",\"6\",\"8\")"
+  printf "$row_format_ext" "-H int, --head-bits int" "Number of bits per weight for the lm_head (output) layer of the model. Must be an integer from 1 to 8, default is 6."
+  printf "$row_format_ext" "-w, --hf-workers" "Hugginface Hub CLI Maximum number of workers to use for downloading files. Default is 8."
+  printf "$row_format_ext" "-p true/false, --parallel-mode true/false" "Fully parallelize quantization across multiple GPUs when possible."
+  printf "$row_format_ext" "-d [0,1,2,3], --device-list [0,1,2,3]" "Comma-separated list of GPU device IDs to use during quantization. By default only the first visible device (device 0) is used."
+  printf "$row_format_ext" "-h, --help" "Display this help message"
+}
+function has_argument {
+    [[ ("$1" == *=* && -n ${1#*=}) || ( ! -z "$2" && "$2" != -*)  ]];
+}
+function extract_argument {
+  echo "${2:-${1#*=}}"
+}
+function confirm_continue {
+  while true; do
+    printf "%-s\n%-s\n" "Would you like to proceed?" "[(C)ontinue/(Y)es or E(x)it/(N)o?]"
+    read -N 1 -r user_input
+    case $user_input in
+      [CcYy]) return 0;;
+      [XxNn]) printf "\n%s\n" "User requested exit. Stopping script." && exit 1;;
+      *) printf "\n%s\n" "Invalid input. Please press (C)ontinue/(Y)es or E(x)it/(N)o?.";;
+    esac
+  done
+}
+function set_options {
+  [ ! -z "$HF_MODEL" ] && exl3_args="${exl3_args} -e HF_MODEL=${HF_MODEL}" || printf "Model Name not specified." >&2
+  [ -z "$HF_MODEL" ] && usage && exit 1
+  [ ! -z "$SHARD_SIZE" ] && exl3_args="${exl3_args} -e SHARD_SIZE=${SHARD_SIZE}" || printf "Invalid Max Model Shard Size." >&2
+  [ ! -z "$HF_WORKERS" ] && exl3_args="${exl3_args} -e HF_WORKERS=${HF_WORKERS}" || printf "Invalid number of HuggingFace Hub Workers." >&2
+  [ ! -z "$BITS" ] && exl3_args="${exl3_args} -e BITS=${BITS}" || printf "Model Bits per weight not specified." >&2
+  [ ! -z "$HEAD_BITS" ] && exl3_args="${exl3_args} -e HEAD_BITS=${HEAD_BITS}"
+  if [ "$EXL3_PM" = true ]; then
+    exl3_args="${exl3_args} -e EXL3_PM=true"
+  fi
+  [ ! -z "$EXL3_DL" ] && exl3_args="${exl3_args} -e EXL3_DL=${EXL3_DL}"
+}
+# Function to handle options and arguments
+function handle_options {
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -h | --help) usage && exit 0;;
+      -m | --model) if ! has_argument "$@"; then
+        printf "Model Name not specified." >&2
+        usage
+        exit 1
+      fi
+      HF_MODEL=$(extract_argument "$@")
+      shift
+      ;;
+      -w | --hf-workers) HF_WORKERS=$(extract_argument "$@") && shift;;
+      -s | --shard-size) SHARD_SIZE=$(extract_argument "$@") && shift;;
+      -b | --bpw) BITS=$(extract_argument "$@") && shift;;
+      -H | --head-bits) HEAD_BITS=$(extract_argument "$@") && shift;;
+      -p | --parallel-mode) EXL3_PM=$(extract_argument "$@") && shift;;
+      -d | --device-list) EXL3_DL=$(extract_argument "$@") && shift;;
+      *) printf "Invalid option: %s\n" "$1" >&2 && usage && exit 1;;
+    esac
+    shift
+  done
+  set_options
+}
+function command_build {
+  [ -z "$exl3_args" ] && printf "%s\n" "No valid input provided. Error!" || command="docker compose run${exl3_args} --rm convert"
+  [ -z "$command" ] && exit 1 || printf "Running the following docker build command:\n%s\n" "$command"
+}
+function run_build {
+  ${command}
+}
+# Main script execution
+handle_options "$@"
+command_build
+confirm_continue
+run_build

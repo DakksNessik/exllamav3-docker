@@ -1,0 +1,119 @@
+#!/bin/bash
+# Default varoable values
+APP_NAME="exllamav3-docker"
+NOW=$( TZ="America/Chicago" date +"%Y.%m%d.%H%M" )
+debug=false
+no_cache=false
+quiet=false
+tag=""
+check=false
+docker_args_default=""
+docker_args=""
+Dockerfile="-f ./Dockerfile"
+builder="${builder:-default}"
+platform="${platform:-linux/amd64}"
+build_args_default="--progress plain -t ${APP_NAME}:${NOW} -t ${APP_NAME}:latest"
+build_args="${build_args_default}"
+command=""
+# Function to display script usage
+function usage {
+  local row_format="%-34s%-50s\n"
+  local row_format_1="%-35s%-50s\n"
+  printf "Usage: %s [OPTIONS]\nOptions:\n" "$0"
+  printf "$row_format" "-b, --delete-build" "Delete the build folder before building image"
+  printf "$row_format" "-d, --debug" "Build Image with Debug output enabled"
+  printf "$row_format" "-f, --nocache" "Build Image without using existing cache"
+  printf "$row_format" "-q, --quiet" "Build Image without feedback"
+  printf "$row_format" "--check, --dry-run" "Evaluate the build image process"
+  printf "$row_format_1" "-t=\"notlatest\", --tag=\"notlatest\"" "Build Image with additional tag (docker-image:tag)"
+  printf "$row_format" "-h, --help" "Display this help message"
+}
+function has_argument {
+    [[ ("$1" == *=* && -n ${1#*=}) || ( ! -z "$2" && "$2" != -*)  ]];
+}
+function extract_argument {
+  echo "${2:-${1#*=}}"
+}
+function rm_build {
+  printf "Removing build directory...\n"
+  rm -rf ./build
+  printf "Build directory has been removed...\n"
+}
+function set_options {
+  if [ "$debug" = true ]; then
+    printf "The \"debug\" flag has been set to '%s' \n" "$debug"
+    docker_args="${docker_args} --debug"
+  fi
+  if [ "$no_cache" = true ]; then
+    printf "The \"clear build cache\" flag has been set to '%s' \n" "$no_cache"
+    build_args="${build_args} --no-cache"
+  fi
+  if [ "$quiet" = true ]; then
+    printf "The \"quiet\" flag has been set to '%s' \n" "$quiet"
+    build_args="${build_args} --quiet"
+  fi
+  if [ "$check" = true ]; then
+    printf "The \"check\" flag has been set to '%s' \n" "$check"
+    build_args="${build_args} --call check"
+  fi
+}
+function set_options_tags {
+  [ ! -z "$tag" ] && build_args="${build_args} --tag ${APP_NAME}:${tag}"
+}
+function confirm_continue {
+  while true; do
+    printf "%-s\n%-s\n" "Would you like to proceed?" "[(C)ontinue/(Y)es or E(x)it/(N)o?]"
+    read -N 1 -r user_input
+    case $user_input in
+      [CcYy]) return 0;;
+      [XxNn]) printf "\n%s\n" "User requested exit. Stopping script." && exit 1;;
+      *) printf "\n%s\n" "Invalid input. Please press (C)ontinue/(Y)es or E(x)it/(N)o?.";;
+    esac
+  done
+}
+# Function to handle options and arguments
+function handle_options {
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -h | --help) usage && exit 0;;
+      -b | --delete-build) rm_build;;
+      -d | --debug) debug=true;;
+      -f | --no-cache) no_cache=true;;
+      -q | --quiet) quiet=true;;
+      --check | --dry-run) check=true;;
+      -t | --tag) if ! has_argument "$@"; then
+        printf "%s missing argument. Please check your command and try again." "$0"
+                    shift
+                  fi
+                  tag=$(extract_argument "$@")
+                  set_options_tags
+                  shift
+                  ;;
+      *) printf "Invalid option: %s\n" "$1" >&2 && usage && exit 1;;
+    esac
+    shift
+  done
+}
+# Function to perform the desired actions based on the provided flags and arguments
+function pre_build {
+  mkdir -p ./build
+  mkdir -p ./output
+  cp -f entrypoint.sh ./build/
+#  rsync -ahvz --progress ./build_files/* ./build
+  set_options
+}
+function command_build {
+  [ -z "$docker_args" ] && command="docker ${docker_args_default}" || command="docker ${docker_args}"
+  [ -z "$build_args" ] && command="${command} build ${Dockerfile} ${build_args_default}" || command="${command} build ${Dockerfile} ${build_args}"
+  [ -z "$command" ] && printf "%s" "Script has encountered an issue. Please check your command and try again." || command="${command} ./build"
+  [ -z "$command" ] && exit 1 || printf "Running the following docker build command:\n%s\n" "$command"
+}
+function run_build {
+  ${command}
+}
+# Main script execution
+handle_options "$@"
+command_build
+confirm_continue
+pre_build
+run_build

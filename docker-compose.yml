@@ -1,0 +1,32 @@
+name: exllamav3
+services:
+  convert:
+    restart: "no"
+    user: "${USER_UID}:${USER_GID}"
+    image: exllamav3:latest
+    env_file: .env
+    environment:
+      USER_UID: ${USER_UID}
+      USER_GID: ${USER_GID}
+      # INPUT: ${INPUT}
+      # OUTPUT: $OUTPUT}
+      BITS: ${BITS}
+      HEAD_BITS: ${HEAD_BITS}
+      SHARD_SIZE: ${SHARD_SIZE}
+      EXL3_PM: ${EXL3_PM}
+      EXL3_DL: ${EXL3_DL}
+      HF_USERNAME: ${HF_USERNAME}
+      HF_TOKEN: ${HF_TOKEN}
+      HF_MODEL: ${HF_MODEL}
+      HF_WORKERS: ${HF_WORKERS}
+    volumes:
+      - ./input:/content/input:rw
+      - ./output:/content/output:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+            #  device_ids: ['0']
+              capabilities: [gpu]
