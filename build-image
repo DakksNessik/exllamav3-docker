@@ -10,8 +10,6 @@ check=false
 docker_args_default=""
 docker_args=""
 Dockerfile="-f ./Dockerfile"
-builder="${builder:-default}"
-platform="${platform:-linux/amd64}"
 build_args_default="--progress plain -t ${APP_NAME}:${NOW} -t ${APP_NAME}:latest"
 build_args="${build_args_default}"
 command=""
@@ -99,7 +97,6 @@ function pre_build {
   mkdir -p ./build
   mkdir -p ./output
   cp -f entrypoint.sh ./build/
-#  rsync -ahvz --progress ./build_files/* ./build
   set_options
 }
 function command_build {

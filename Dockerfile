@@ -14,12 +14,14 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     python3-pip \
     python3-venv \
     python-is-python3 \
+    && rm -rf /var/log/apt/* /etc/apt/sources.list.d/* \
     && apt-get purge -y \
     && apt-get autoremove -y \
     && apt-get autoclean -y \
+    && rm -rf /var/lib/apt/lists/* \
     && python -m venv $VIRTUAL_ENV \
     && chmod +x /usr/local/bin/entrypoint.sh \
-    && mkdir /content
+    && mkdir /content \
     && chown -fR $USER_UID:$USER_GID /content $VIRTUAL_ENV \
     && pip -v install -U pip setuptools wheel ninja packaging psutil \
     && pip -v install -U huggingface_hub
